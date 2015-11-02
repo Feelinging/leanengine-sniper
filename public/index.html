@@ -3,8 +3,13 @@
     <title>LeanEngine Sniper</title>
   </head>
   <body>
-    <select id='routerSelect'></select>
-    <select id='routerStatusCodeSelect'>
+    <select id='routerSelect'>
+      <option></option>
+    </select>
+    <select id='instanceSelect'>
+      <option></option>
+    </select>
+    <select id='statusCodeSelect'>
       <option></option>
       <option>200</option>
       <option>201</option>
@@ -24,8 +29,9 @@
     <div id="cloudResponseTime" style="width:100%; height:400px;"></div>
     <div id="cloudPie" style="width:50%; height:400px; float: left;"></div>
     <div id="cloudStatusPie" style="width:50%; height:400px; float: left;"></div>
-    <script src="http://cdn.staticfile.org/jquery/1.8.2/jquery.min.js"></script>
-    <script src="http://cdn.staticfile.org/highcharts/4.0.4/highcharts.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/lodash.js/3.10.1/lodash.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highcharts/4.0.4/highcharts.js"></script>
     <script src="index.js"></script>
   </body>
 </html>
