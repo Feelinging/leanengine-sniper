@@ -9,6 +9,7 @@ var _ = require('underscore');
 var os = require('os');
 
 var instanceId = os.hostname() + ':' + process.env.LC_APP_PORT;
+var responseTypes = ['success', 'clientError', 'serverError'];
 
 /**
  * @param {AV} options.AV
@@ -175,7 +176,7 @@ function createCollector(options) {
   var AV = options.AV;
   var commitCycle = options.commitCycle || 300000;
   var realtimeCycle = options.realtimeCycle || 5000;
-  var counterFields = _.union(['responseTime', 'success', 'clientError', 'serverError'], options.counterFields);
+  var counterFields = _.union(['responseTime'], responseTypes, options.counterFields);
 
   var Storage = AV.Object.extend(options.className);
   var bucket = {};
@@ -199,14 +200,9 @@ function createCollector(options) {
       instance: instanceId
     };
 
-    counterFields.forEach(function(field) {
-      var fieldName = field;
-
-      if (!isNaN(parseInt(field)))
-        fieldName = 'status' + field;
-
-      log[fieldName] = _.reduce(log.urls, function(memory, stat) {
-        return memory + stat[field];
+    responseTypes.forEach(function(field) {
+      log[field] = _.reduce(log.urls, function(memory, url) {
+        return memory + url[field] || 0;
       }, 0);
     });
 
@@ -289,7 +285,7 @@ function typeOfStatusCode(code) {
 
 function requestCount(urlStat) {
   var result = 0;
-  ['success', 'clientError', 'serverError'].forEach(function(field) {
+  responseTypes.forEach(function(field) {
     if (urlStat[field])
       result += urlStat[field];
   });

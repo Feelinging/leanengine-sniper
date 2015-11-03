@@ -143,9 +143,7 @@ function displayCharts() {
             if (displayOptions.byStatusCode)
               return _.sum(urls, displayOptions.byStatusCode);
             else
-              return _.sum(urls, function(url) {
-                return url.success + url.clientError + url.serverError;
-              });
+              return _.sum(urls, requestCount);
           })()
         };
       }).filter(function(item) {
@@ -247,9 +245,7 @@ function displayCharts() {
       data: _(cloudData).pluck('urls').flatten().groupBy('urlPattern').map(function(urls, urlPattern) {
         return {
           name: urlPattern,
-          y: _.sum(urls, function(url) {
-            return url.success + url.clientError + url.serverError;
-          })
+          y: _.sum(urls, requestCount)
         };
       }).filter(function(item) {
         return item.y > 0;
@@ -271,7 +267,7 @@ function displayCharts() {
           if (grouped[type])
             grouped[type] += url[type];
           else
-            grouped[type] = url[type];
+            grouped[type] = url[type] || 0;
         });
         return grouped;
       }, {})).map(function(value, key) {
@@ -306,8 +302,14 @@ function mergeInstancesPoint(data, filterByInstance) {
 
     var lastLog = _.last(result);
 
-    if (lastLog && lastLog.instance != log.instance) {
+    // 合并的条件：存在上一条记录，且上一条记录与当前记录属于不同实例，且上一条记录没有合并过当前实例的记录
+    if (lastLog && lastLog.instance != log.instance && !_.contains(lastLog.mergedInstance, log.instance)) {
       mergeRecord(lastLog, log);
+
+      if (lastLog.mergedInstance)
+        lastLog.mergedInstance.push(log.instance);
+      else
+        lastLog.mergedInstance = [log.instance];
     } else {
       result.push(log);
     }
@@ -321,8 +323,8 @@ function mergeRecord(target, source) {
     var targetUrl = _.findWhere(target.urls, {urlPattern: url.urlPattern});
 
     if (targetUrl) {
-      var totalResponseTime = target.responseTime * requestCount(target);
-      totalResponseTime += source.responseTime * requestCount(source);
+      var totalResponseTime = (target.responseTime || 0) * requestCount(target);
+      totalResponseTime += (source.responseTime || 0) * requestCount(source);
 
       _.each(url, function(value, key) {
         if (isFinite(parseInt(key)) || _.contains(responseTypes, key)) {
