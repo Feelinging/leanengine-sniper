@@ -148,6 +148,8 @@ function displayCharts() {
               });
           })()
         };
+      }).filter(function(item) {
+        return item.y > 0;
       }).sortBy('y').slice(-pieChartItemLimit).value()
     }]
   });
@@ -176,6 +178,8 @@ function displayCharts() {
           name: key,
           y: value
         };
+      }).filter(function(item) {
+        return item.y > 0;
       }).value()
     }]
   });
@@ -247,6 +251,8 @@ function displayCharts() {
             return url.success + url.clientError + url.serverError;
           })
         };
+      }).filter(function(item) {
+        return item.y > 0;
       }).sortBy('y').slice(-pieChartItemLimit).value()
     }]
   });
