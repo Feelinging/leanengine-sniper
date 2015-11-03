@@ -1,139 +1,356 @@
 'use strict';
-/* globals $, Highcharts */
+/* globals $, Highcharts, _ */
 
-loadInitialData();
+var responseTypes = ['success', 'clientError', 'serverError'];
+var pieChartItemLimit = 15;
+
+var initialData = {
+  routerData: [],
+  cloudData: []
+};
+
+var displayOptions = {
+  // 路由筛选，由 filterByRouter 实现
+  byRouter: null,
+  // 路由状态码筛选，在 displayCharts 中实现
+  byStatusCode: null,
+  // 应用实例筛选，在 mergeInstancesPoint 中实现
+  byInstance: null
+};
 
 $(function() {
   $('#routerSelect').change(function() {
-    loadInitialData({router: $('#routerSelect').val() || undefined});
-    $('#routerStatusCodeSelect').val('');
+    displayOptions.byRouter = $('#routerSelect').val();
+    displayCharts();
   });
 
-  $('#routerStatusCodeSelect').change(function() {
-    loadInitialData({routerStatusCode: $('#routerStatusCodeSelect').val() || undefined});
-    $('#routerSelect').val('');
+  $('#statusCodeSelect').change(function() {
+    displayOptions.byStatusCode = $('#statusCodeSelect').val();
+    displayCharts();
+  });
+
+  $('#instanceSelect').change(function() {
+    displayOptions.byInstance = $('#instanceSelect').val();
+    displayCharts();
   });
 });
 
-function loadInitialData(options) {
-  $.get('initial.json', options, function(data) {
-    if (options === undefined) {
-      $('#routerSelect').html("<option></option>");
-      data.routers.forEach(function(name) {
-        $('#routerSelect').append($("<option></option>").attr("value", name).text(name));
-      });
-    }
+Highcharts.setOptions({
+  global: {
+    useUTC: false
+  }
+});
 
-    Highcharts.setOptions({
-      global: {
-        useUTC: false
-      }
-    });
+$.get('lastDayStatistics.json', function(data) {
+  initialData = data;
 
-    $('#routerSuccessAndError').highcharts({
-      title: {
-        text: '路由访问次数'
-      },
-      xAxis: {
-        type: 'datetime',
-      },
-      yAxis: {
-        title: {
-          text: '次数'
-        }
-      },
-      series: data.routerSuccessAndError
-    });
-
-    $('#cloudSuccessAndError').highcharts({
-      title: {
-        text: '云调用次数'
-      },
-      xAxis: {
-        type: 'datetime',
-      },
-      yAxis: {
-        title: {
-          text: '次数'
-        }
-      },
-      series: data.cloudSuccessAndError
-    });
-
-    $('#routerResponseTime').highcharts({
-      chart: {
-        type: 'area'
-      },
-      title: {
-        text: '路由平均响应时间'
-      },
-      xAxis: {
-        type: 'datetime',
-      },
-      yAxis: {
-        title: {
-          text: '时间（毫秒）'
-        }
-      },
-      series: data.routerResponseTime
-    });
-
-    $('#cloudResponseTime').highcharts({
-      chart: {
-        type: 'area'
-      },
-      title: {
-        text: '云调用平均响应时间'
-      },
-      xAxis: {
-        type: 'datetime',
-      },
-      yAxis: {
-        title: {
-          text: '时间（毫秒）'
-        }
-      },
-      series: data.cloudResponseTime
-    });
-
-    $('#routerPie').highcharts({
-      chart: {
-        type: 'pie'
-      },
-      title: {
-        text: '路由分布'
-      },
-      series: data.routerPie
-    });
-
-    $('#statusPie').highcharts({
-      chart: {
-        type: 'pie'
-      },
-      title: {
-        text: '响应代码分布'
-      },
-      series: data.statusPie
-    });
-
-    $('#cloudPie').highcharts({
-      chart: {
-        type: 'pie'
-      },
-      title: {
-        text: '云调用分布'
-      },
-      series: data.cloudPie
-    });
-
-    $('#cloudStatusPie').highcharts({
-      chart: {
-        type: 'pie'
-      },
-      title: {
-        text: '云调用响应分布'
-      },
-      series: data.cloudStatusPie
-    });
+  _(initialData.routerData).pluck('urls').flatten().pluck('urlPattern').uniq().value().forEach(function(name) {
+    $('#routerSelect').append($("<option></option>").attr("value", name).text(name));
   });
+
+  _(initialData.routerData).pluck('instance').uniq().value().forEach(function(name) {
+    $('#instanceSelect').append($("<option></option>").attr("value", name).text(name));
+  });
+
+  displayCharts();
+});
+
+function displayCharts() {
+  var routerData = mergeInstancesPoint(initialData.routerData, displayOptions.byInstance);
+  var cloudData = mergeInstancesPoint(initialData.cloudData, displayOptions.byInstance);
+
+  if (displayOptions.byRouter)
+    routerData = filterByRouter(routerData, displayOptions.byRouter);
+
+  $('#routerSuccessAndError').highcharts({
+    title: {
+      text: '路由访问量'
+    },
+    xAxis: {
+      type: 'datetime',
+    },
+    yAxis: {
+      title: {
+        text: '次数'
+      }
+    },
+    series: (function() {
+      if (!displayOptions.byStatusCode) {
+        return responseTypes.map(function(type) {
+          return {
+            name: type,
+            data: routerData.map(function(log) {
+              return {
+                x: log.createdAt.getTime(),
+                y: log[type]
+              };
+            })
+          };
+        });
+      } else {
+        return [{
+          name: displayOptions.byStatusCode,
+          data: routerData.map(function(log) {
+            return {
+              x: log.createdAt.getTime(),
+              y: _.sum(log.urls, displayOptions.byStatusCode)
+            };
+          })
+        }];
+      }
+    })()
+  });
+
+  $('#routerResponseTime').highcharts({
+    chart: {
+      type: 'area'
+    },
+    title: {
+      text: '路由平均响应时间'
+    },
+    xAxis: {
+      type: 'datetime',
+    },
+    yAxis: {
+      title: {
+        text: '时间（毫秒）'
+      }
+    },
+    series: [{
+      name: 'responseTime',
+      data: routerData.map(function(log) {
+        return {
+          x: log.createdAt.getTime(),
+          y: log.responseTime
+        };
+      })
+    }]
+  });
+
+  $('#routerPie').highcharts({
+    chart: {
+      type: 'pie'
+    },
+    title: {
+      text: '路由分布'
+    },
+    series: [{
+      name: 'Routers',
+      data: _(routerData).pluck('urls').flatten().groupBy('urlPattern').map(function(urls, urlPattern) {
+        return {
+          name: urlPattern,
+          y: (function() {
+            if (displayOptions.byStatusCode)
+              return _.sum(urls, displayOptions.byStatusCode);
+            else
+              return _.sum(urls, requestCount);
+          })()
+        };
+      }).filter(function(item) {
+        return item.y > 0;
+      }).sortBy('y').slice(-pieChartItemLimit).value()
+    }]
+  });
+
+  $('#statusPie').highcharts({
+    chart: {
+      type: 'pie'
+    },
+    title: {
+      text: '路由响应代码分布'
+    },
+    series: [{
+      name: 'StatusCode',
+      data: _(_(routerData).pluck('urls').flatten().reduce(function(grouped, url) {
+        _.each(url, function(value, key) {
+          if (isFinite(parseInt(key)) && (!displayOptions.byStatusCode || displayOptions.byStatusCode == key)) {
+            if (grouped[key])
+              grouped[key] += value;
+            else
+              grouped[key] = value;
+          }
+        });
+        return grouped;
+      }, {})).map(function(value, key) {
+        return {
+          name: key,
+          y: value
+        };
+      }).filter(function(item) {
+        return item.y > 0;
+      }).value()
+    }]
+  });
+
+  $('#cloudSuccessAndError').highcharts({
+    title: {
+      text: '云调用次数'
+    },
+    xAxis: {
+      type: 'datetime',
+    },
+    yAxis: {
+      title: {
+        text: '次数'
+      }
+    },
+    series: responseTypes.map(function(type) {
+      return {
+        name: type,
+        data: cloudData.map(function(log) {
+          return {
+            x: log.createdAt.getTime(),
+            y: log[type]
+          };
+        })
+      };
+    })
+  });
+
+  $('#cloudResponseTime').highcharts({
+    chart: {
+      type: 'area'
+    },
+    title: {
+      text: '云调用平均响应时间'
+    },
+    xAxis: {
+      type: 'datetime',
+    },
+    yAxis: {
+      title: {
+        text: '时间（毫秒）'
+      }
+    },
+    series: [{
+      name: 'responseTime',
+      data: cloudData.map(function(log) {
+        return {
+          x: log.createdAt.getTime(),
+          y: log.responseTime
+        };
+      })
+    }]
+  });
+
+  $('#cloudPie').highcharts({
+    chart: {
+      type: 'pie'
+    },
+    title: {
+      text: '云调用分布'
+    },
+    series: [{
+      name: 'Cloud',
+      data: _(cloudData).pluck('urls').flatten().groupBy('urlPattern').map(function(urls, urlPattern) {
+        return {
+          name: urlPattern,
+          y: _.sum(urls, requestCount)
+        };
+      }).filter(function(item) {
+        return item.y > 0;
+      }).sortBy('y').slice(-pieChartItemLimit).value()
+    }]
+  });
+
+  $('#cloudStatusPie').highcharts({
+    chart: {
+      type: 'pie'
+    },
+    title: {
+      text: '云调用响应分布'
+    },
+    series: [{
+      name: 'CloudStatus',
+      data: _(_(cloudData).pluck('urls').flatten().reduce(function(grouped, url) {
+        responseTypes.forEach(function(type) {
+          if (grouped[type])
+            grouped[type] += url[type];
+          else
+            grouped[type] = url[type] || 0;
+        });
+        return grouped;
+      }, {})).map(function(value, key) {
+        return {
+          name: key,
+          y: value
+        };
+      }).value()
+    }]
+  });
+}
+
+function filterByRouter(routerData, byRouter) {
+  return _.compact(routerData.map(function(log) {
+    var url = _.findWhere(log.urls, {urlPattern: byRouter});
+
+    if (url)
+      return _.extend({}, log, {urls: [url]});
+    else
+      return null;
+  }));
+}
+
+function mergeInstancesPoint(data, filterByInstance) {
+  var result = [];
+
+  if (filterByInstance)
+    data = _.where(data, {instance: filterByInstance});
+
+  data.forEach(function(log) {
+    log.createdAt = new Date(log.createdAt);
+
+    var lastLog = _.last(result);
+
+    // 合并的条件：存在上一条记录，且上一条记录与当前记录属于不同实例，且上一条记录没有合并过当前实例的记录
+    if (lastLog && lastLog.instance != log.instance && !_.contains(lastLog.mergedInstance, log.instance)) {
+      mergeRecord(lastLog, log);
+
+      if (lastLog.mergedInstance)
+        lastLog.mergedInstance.push(log.instance);
+      else
+        lastLog.mergedInstance = [log.instance];
+    } else {
+      result.push(log);
+    }
+  });
+
+  return result;
+}
+
+function mergeRecord(target, source) {
+  source.urls.forEach(function(url) {
+    var targetUrl = _.findWhere(target.urls, {urlPattern: url.urlPattern});
+
+    if (targetUrl) {
+      var totalResponseTime = (target.responseTime || 0) * requestCount(target);
+      totalResponseTime += (source.responseTime || 0) * requestCount(source);
+
+      _.each(url, function(value, key) {
+        if (isFinite(parseInt(key)) || _.contains(responseTypes, key)) {
+          if (targetUrl[key])
+            targetUrl[key] += value;
+          else
+            targetUrl[key] = value;
+        }
+      });
+
+      responseTypes.forEach(function(field) {
+        target[field] = _.sum(target.urls, field);
+      });
+
+      target.responseTime = totalResponseTime / requestCount(target);
+    } else {
+      target.urls.push(url);
+    }
+  });
+}
+
+function requestCount(urlStat) {
+  var result = 0;
+  responseTypes.forEach(function(field) {
+    if (urlStat[field])
+      result += urlStat[field];
+  });
+  return result;
 }

@@ -24,7 +24,7 @@
     app.use(sniper({
       AV: AV,
       rules: [
-        {match: /^GET \/(js|css).+/, rewrite: 'GET /$1'}, // 将例如 /js/jquery.js 的 URL 重写为 /js
+        {match: /^GET \/(pdf|docx?).+/, rewrite: 'GET /$1'}, // 将例如 /pdf/overview.pdf 的 URL 重写为 /pdf
         {match: /^GET \/public/, ignore: true}            // 忽略 GET /public 开头的 URL
       ]
     }));
@@ -32,3 +32,4 @@
 **sniper 的更多选项**：
 
 * specialStatusCodes, 数字数组，为了记录合适大小的数据，默认只会单独记录几个常见的 statusCode, 你可以覆盖默认的值。
+* ignoreStatics, 布尔值，默认启用，会将常见的静态文件 URL 重写为类似 `GET *.js` 的 URL.
