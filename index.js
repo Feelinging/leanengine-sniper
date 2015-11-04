@@ -5,39 +5,61 @@ var onHeaders = require('on-headers');
 var EventEmitter = require('events');
 var pathToRegexp = require('path-to-regexp');
 var debug = require('debug')('AV:sniper');
-var _ = require('underscore');
+var Redis = require('ioredis');
 var os = require('os');
+var _ = require('underscore');
 
-var instanceId = os.hostname() + ':' + process.env.LC_APP_PORT;
-var responseTypes = ['success', 'clientError', 'serverError'];
+var createCollector = require('./collector');
+var utils = require('./public/utils');
+
+var instanceName = os.hostname().replace(/[^a-zA-Z0-9_]/g, '');
+
+var sampleBucket = { // bucket, log
+  instanceA: { // instance, instanceBucket
+    routers: [ // urls
+      {url: 'urlA', totalResponseTime: 650, '200': 3}, // url, urlLog
+      // ...
+    ],
+    cloudApi: [
+      // ...
+    ]
+  },
+  instanceB: {
+    // ...
+  }
+};
 
 /**
  * @param {AV} options.AV
- * @param {Number[]=} options.specialStatusCodes
+ * @param {String} options.redis
  * @param {Number=300000} options.commitCycle
- * @param {Number=5000} options.realtimeCycle
  * @param {Boolean=true} options.ignoreStatics
  * @param {Object[]=} options.rules
  *          {match: /^GET \/(js|css).+/, ignore: true}
  *          {match: /^GET \/(js|css).+/, rewrite: 'GET /*.$1'}
  */
 module.exports = exports = function(options) {
-  var specialStatusCodes = options.specialStatusCodes || [200, 201, 302, 304, 400, 401, 404, 500, 502];
+  var AV = options.AV;
+  var redis;
   var rewriteRules = options.rules || [];
+  options.commitCycle = options.commitCycle || 300000;
 
   if (options.ignoreStatics !== false) {
-    rewriteRules.push({
+    rewriteRules.unshift({
       match: /^GET .*\.(css|js|jpe?g|gif|png|woff2?|ico)$/,
       rewrite: 'GET *.$1'
     });
   }
 
-  var cloudCollector = collectCloudAPICall(options);
+  var collector = createCollector();
 
-  var routerCollector = createCollector(_.extend({
-    className: 'LeanEngineReponseLog5Min',
-    counterFields: specialStatusCodes
-  }, options));
+  if (options.redis) {
+    redis = new Redis(options.redis);
+    startRealtime(redis, collector);
+  }
+
+  injectCloudRequest(AV, collector);
+  startUploading(AV.Object.extend('LeanEngineSniper'), redis, collector, options);
 
   var sniper = function(req, res, next) {
     req._lc_startedAt = new Date();
@@ -47,77 +69,50 @@ module.exports = exports = function(options) {
     });
 
     onFinished(res, function(err) {
-      if (err) return console.error(err);
+      if (err)
+        return console.error(err);
 
-      var responseTime = null;
-      var urlPattern = req.originalUrl.replace(/\?.*/, '');
+        if (req.originalUrl.match(/__lcSniper/))
+          return;
 
-      if (res._lc_startedAt)
-        responseTime = res._lc_startedAt.getTime() - req._lc_startedAt.getTime();
+      var requestUrl = req.originalUrl.replace(/\?.*/, '');
+      var responseTime = (res._lc_startedAt ? res._lc_startedAt.getTime() : Date.now()) - req._lc_startedAt.getTime();
 
       if (req.route) {
         // 如果这个请求属于一个路由，则用路由路径替换掉 URL 中匹配的部分
         var regexp = pathToRegexp(req.route.path).toString().replace(/^\/\^/, '').replace(/\/i$/, '');
-        var matched = urlPattern.match(new RegExp(regexp, 'i'));
+        var matched = requestUrl.match(new RegExp(regexp, 'i'));
 
         if (matched[0]) {
-          urlPattern = urlPattern.slice(0, matched.index) + req.route.path;
+          requestUrl = requestUrl.slice(0, matched.index) + req.route.path;
         }
       }
 
-      urlPattern = req.method.toUpperCase() + ' ' + urlPattern;
-
-      if (urlPattern.match(/__lcSniper/))
-        return;
+      requestUrl = req.method.toUpperCase() + ' ' + requestUrl;
 
       if (rewriteRules.some(function(rule) {
-        if (urlPattern.match(rule.match)) {
+        if (requestUrl.match(rule.match)) {
           if (rule.ignore)
             return true;
 
-          urlPattern = urlPattern.replace(rule.match, rule.rewrite);
+          requestUrl = requestUrl.replace(rule.match, rule.rewrite);
         }
       })) {
-        return;
+        return debug('router: ignored %s', requestUrl);
       }
 
-      var record = {
-        urlPattern: urlPattern,
-        responseTime: responseTime
-      };
-
-      record[typeOfStatusCode(res.statusCode)] = 1;
-
-      if (_.contains(specialStatusCodes, res.statusCode))
-        record[res.statusCode] = 1;
-
-      debug('router: %s %s %sms', urlPattern, res.statusCode, responseTime);
-      routerCollector.putRecord(record);
+      debug('router: %s %s %sms', requestUrl, res.statusCode, responseTime);
+      collector.logRouter(requestUrl, res.statusCode, responseTime);
     });
 
     next();
   };
 
-  return [sniper, require('./server')({
-    AV: options.AV,
-    routerCollector: routerCollector,
-    cloudCollector: cloudCollector
-  })];
+  return sniper;
 };
 
-/**
- * @param options.AV
- * @param {Number=300000} options.commitCycle
- * @param {Number=5000} options.realtimeCycle
- */
-function collectCloudAPICall(options) {
-  var AV = options.AV;
+function injectCloudRequest(AV, collector) {
   var originalRequest = AV._request;
-
-  var collector = createCollector({
-    AV: AV,
-    className: 'LeanEngineCloudAPI5Min'
-  });
 
   var generateUrl = function(route, className, objectId, method) {
     var url = method + ' ' + route;
@@ -135,159 +130,116 @@ function collectCloudAPICall(options) {
     var startedAt = new Date();
     var promise = originalRequest.apply(AV, arguments);
 
-    var record = {
-      urlPattern: generateUrl(route, className, objectId, method)
+    var cloudUrl = generateUrl(route, className, objectId, method);
+
+    var responseType = function(err) {
+      if (!err)
+        return 'success';
+      else if (err.code > 0)
+        return 'clientError';
+      else
+        return 'serverError';
+    };
+
+    var responseTime = function() {
+      return Date.now() - startedAt.getTime();
     };
 
     promise.then(function(result, statusCode) {
-      if (record.urlPattern.match(/classes\/LeanEngine(ReponseLog|CloudAPI)/))
+      if (cloudUrl.match(/classes\/LeanEngineSniper/))
         return;
 
-      record.responseTime = Date.now() - startedAt.getTime();
-      record.success = 1;
-      debug('cloudAPI: %s %s', record.urlPattern, statusCode);
-      collector.putRecord(record);
+      debug('cloudApi: %s %s', cloudUrl, statusCode);
+      collector.logCloudApi(cloudUrl, responseType(), responseTime());
     }, function(err) {
-      record.responseTime = Date.now() - startedAt.getTime();
-
-      if (err.code > 0)
-        record.clientError = 1;
-      else
-        record.serverError = 1;
-
-      debug('cloudAPI: %s Error %s', record.urlPattern, err.code);
-      collector.putRecord(record);
+      debug('cloudAapi: %s Error %s', cloudUrl, err.code);
+      collector.logCloudApi(cloudUrl, responseType(err), responseTime());
     });
 
     return promise;
   };
-
-  return collector;
 }
 
-/**
- * @param {AV} options.AV
- * @param {String} options.className
- * @param {Number=300000} options.commitCycle
- * @param {Number=5000} options.realtimeCycle
- * @param {String[]} options.counterFields
- */
-function createCollector(options) {
-  var AV = options.AV;
-  var commitCycle = options.commitCycle || 300000;
-  var realtimeCycle = options.realtimeCycle || 5000;
-  var counterFields = _.union(['responseTime'], responseTypes, options.counterFields);
+function startUploading(Storage, redis, collector, options) {
+  var currentRange = function() {
+    var timestamp = Date.now();
+    return timestamp - (timestamp % options.commitCycle);
+  };
 
-  var Storage = AV.Object.extend(options.className);
-  var bucket = {};
-  var realtimeBucket = {};
-  var events = new EventEmitter();
+  var nextRange = function() {
+    return currentRange() + options.commitCycle;
+  };
 
-  var commitToServer = function() {
-    if (_.isEmpty(bucket))
+  var createBucket = function(instanceBucket) {
+    return _.object([[instanceName, instanceBucket]]);
+  };
+
+  var commitToRedis = function(range) {
+    debug('commitToRedis');
+
+    var instance = collector.flush();
+
+    if (utils.isEmptyInstance(instance))
       return;
 
-    debug('commitToServer');
-
-    var totalResponseTime = 0;
-
-    var log = {
-      urls: _.map(bucket, function(urlStat) {
-        totalResponseTime += urlStat.responseTime;
-        urlStat.responseTime = urlStat.responseTime / requestCount(urlStat);
-        return urlStat;
-      }),
-      instance: instanceId
-    };
-
-    responseTypes.forEach(function(field) {
-      log[field] = _.reduce(log.urls, function(memory, url) {
-        return memory + url[field] || 0;
-      }, 0);
+    redis.rpush(redisBucketsKey(range), JSON.stringify(createBucket(instance)), function(err) {
+      if (err) console.error(err);
     });
+  };
 
-    log.responseTime = totalResponseTime / requestCount(log);
-
+  var uploadToCloud = function(log) {
     (new Storage()).save(log, {
       success: function() {
-        debug('Save success %s', options.className);
+        debug('Upload success %j', _.keys(log));
       },
       error: function(log ,err) {
         console.error(err);
       }
     });
-
-    bucket = {};
   };
 
-  var putToBucket = function(bucket, record) {
-    var grouped = bucket[record.urlPattern];
+  var uploadWithoutRedis = function() {
+    var instance = collector.flush();
 
-    if (!grouped) {
-      grouped = bucket[record.urlPattern] = {
-        urlPattern: record.urlPattern
-      };
-    }
+    if (!utils.isEmptyInstance(instance))
+      uploadToCloud(createBucket(instance));
 
-    counterFields.forEach(function(field) {
-      if (record[field]) {
-        // 很多 grouped[field] 只有在有 record 的时候才填充值，减小最终纪录体积
-        if (grouped[field] === undefined) {
-          grouped[field] = record[field];
-        } else {
-          grouped[field] += record[field];
-        }
-      }
+    setTimeout(uploadWithoutRedis, nextRange() - Date.now());
+  };
+
+  var uploadWithRedis = function(lastRange) {
+    commitToRedis(lastRange);
+    setTimeout(function() {
+      redis.lrange(redisBucketsKey(lastRange), 0, -1, function(err, buckets) {
+        redis.del(redisBucketsKey(lastRange), function(err, deletedKeys) {
+          debug('deletedKeys', deletedKeys);
+          if (deletedKeys > 0) {
+            var bucket = utils.mergeBuckets(buckets.map(JSON.parse));
+
+            if (!_.isEmpty(bucket))
+              uploadToCloud(bucket);
+          }
+        });
+      });
+    }, 10000);
+    setTimeout(uploadWithRedis.bind(null, currentRange()), nextRange() - Date.now());
+  };
+
+  if (redis) {
+    setTimeout(uploadWithRedis.bind(null, currentRange()), nextRange() - Date.now());
+  } else {
+    setTimeout(uploadWithoutRedis, nextRange() - Date.now());
+  }
+}
+
+function startRealtime(redis, collector) {
+  setInterval(function() {
+    redis.publish('__lcSniper:realtime', JSON.stringify(collector.flushRealtime()), function(err) {
+      if (err) console.error(err);
     });
-  };
-
-  setInterval(function() {
-    commitToServer();
-  }, commitCycle);
-
-  setInterval(function() {
-    events.emit('realtime', realtimeBucket);
-    realtimeBucket = {};
-  }, realtimeCycle);
-
-  return {
-    on: events.on.bind(events),
-
-    putRecord: function(record) {
-      putToBucket(bucket, record);
-      putToBucket(realtimeBucket, record);
-    },
-
-    getLastDayStatistics: function(options) {
-      var query = new AV.Query(Storage);
-      query.greaterThan('createdAt', new Date(Date.now() - 24 * 3600 * 1000));
-      return query.limit(1000).find(options);
-    },
-
-    recentStatistics: function() {
-      return bucket;
-    },
-
-    realtimeStatistics: function() {
-      return realtimeBucket;
-    }
-  };
+  }, 5000);
 }
 
-function typeOfStatusCode(code) {
-  if (code >= 200 && code < 400)
-    return 'success';
-  else if (code >= 400 && code < 500)
-    return 'clientError';
-  else if (code >= 500)
-    return 'serverError';
-}
-
-function requestCount(urlStat) {
-  var result = 0;
-  responseTypes.forEach(function(field) {
-    if (urlStat[field])
-      result += urlStat[field];
-  });
-  return result;
+function redisBucketsKey(time) {
+  return '__lcSniper:buckets:' + time;
 }

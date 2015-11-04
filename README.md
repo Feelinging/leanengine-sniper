@@ -15,7 +15,13 @@
 
 等它收集一段时间数据，就可以打开你的站点下的 `/__lcSniper` 查看统计图表了，basicAuth 的账号是 appId，密码是 masterKey.
 
-数据会储存在你的应用云储存中的 `LeanEngineReponseLog5Min` 和 `LeanEngineCloudAPI5Min` 这两个 Class 中，你的程序（每个实例）每五分钟会分别上传一条记录到这两张表，这意味着每个 LeanEngine 应用实例每个月会因为统计调用情况而消耗 17k 次 api 调用。
+数据会储存在你的应用云储存中的 `LeanEngineSniper` 这个 Class 中，默认会每五分钟创建一条记录，因此你的应用每个月会因上传统计数据而消耗 9k 次云存储 API 调用。
+
+**配置 Redis**：
+
+配置 Redis 后，Sniper 可以提供过去十分钟以 5 秒钟为精度的实时视图；此外如果你的应用运行着多个实例，借助 Redis 可以通过合并多个实例的数据减少调用云存储的次数：
+
+    app.use(sniper({AV: AV, redis: process.env['REDIS_URL_cache1']}));
 
 **定义自己的 URL 分组或忽略规则**：
 
@@ -33,3 +39,4 @@
 
 * specialStatusCodes, 数字数组，为了记录合适大小的数据，默认只会单独记录几个常见的 statusCode, 你可以覆盖默认的值。
 * ignoreStatics, 布尔值，默认启用，会将常见的静态文件 URL 重写为类似 `GET *.js` 的 URL.
+* commitCycle, 毫秒数，默认五分钟，上传统计数据的间隔，建议设置在 1 分钟到 20 分钟内。
