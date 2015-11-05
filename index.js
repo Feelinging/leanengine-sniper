@@ -12,10 +12,9 @@ var _ = require('underscore');
 var createCollector = require('./collector');
 var utils = require('./public/utils');
 
-var instanceName = os.hostname().replace(/[^a-zA-Z0-9_]/g, '');
-
-var sampleBucket = { // bucket, log
-  instanceA: { // instance, instanceBucket
+var sample = { // bucket, log
+  instances: [{ // instance, instanceBucket
+    instance: 'instanceA',
     routers: [ // urls
       {url: 'urlA', totalResponseTime: 650, '200': 3}, // url, urlLog
       // ...
@@ -23,10 +22,10 @@ var sampleBucket = { // bucket, log
     cloudApi: [
       // ...
     ]
-  },
-  instanceB: {
+  }, {
+    instance: 'instanceB',
     // ...
-  }
+  }]
 };
 
 /**
@@ -51,7 +50,7 @@ module.exports = exports = function(options) {
     });
   }
 
-  var collector = createCollector();
+  var collector = createCollector(process.pid + '@' + os.hostname());
 
   if (options.redis) {
     redis = new Redis(options.redis);
@@ -152,7 +151,7 @@ function injectCloudRequest(AV, collector) {
       debug('cloudApi: %s %s', cloudUrl, statusCode);
       collector.logCloudApi(cloudUrl, responseType(), responseTime());
     }, function(err) {
-      debug('cloudAapi: %s Error %s', cloudUrl, err.code);
+      debug('cloudApi: %s Error %s', cloudUrl, err.code);
       collector.logCloudApi(cloudUrl, responseType(err), responseTime());
     });
 
@@ -170,27 +169,10 @@ function startUploading(Storage, redis, collector, options) {
     return currentRange() + options.commitCycle;
   };
 
-  var createBucket = function(instanceBucket) {
-    return _.object([[instanceName, instanceBucket]]);
-  };
-
-  var commitToRedis = function(range) {
-    debug('commitToRedis');
-
-    var instance = collector.flush();
-
-    if (utils.isEmptyInstance(instance))
-      return;
-
-    redis.rpush(redisBucketsKey(range), JSON.stringify(createBucket(instance)), function(err) {
-      if (err) console.error(err);
-    });
-  };
-
   var uploadToCloud = function(log) {
     (new Storage()).save(log, {
       success: function() {
-        debug('Upload success %j', _.keys(log));
+        debug('Upload success %j', _.pluck(log.instances, 'instance'));
       },
       error: function(log ,err) {
         console.error(err);
@@ -202,33 +184,61 @@ function startUploading(Storage, redis, collector, options) {
     var instance = collector.flush();
 
     if (!utils.isEmptyInstance(instance))
-      uploadToCloud(createBucket(instance));
+      uploadToCloud({instances: [instance]});
 
     setTimeout(uploadWithoutRedis, nextRange() - Date.now());
+  };
+
+  var commitToRedis = function(range) {
+    var instance = collector.flush();
+
+    if (utils.isEmptyInstance(instance))
+      return;
+
+    var bucketKey = redisBucketsKey(range);
+    debug('commitToRedis', bucketKey);
+
+    redis.multi()
+      .rpush(bucketKey, JSON.stringify({instances: [instance]}))
+      .pexpire(bucketKey, options.commitCycle)
+      .exec(function(err) {
+         if (err) console.error(err);
+      });
   };
 
   var uploadWithRedis = function(lastRange) {
     commitToRedis(lastRange);
     setTimeout(function() {
-      redis.lrange(redisBucketsKey(lastRange), 0, -1, function(err, buckets) {
-        redis.del(redisBucketsKey(lastRange), function(err, deletedKeys) {
-          debug('deletedKeys', deletedKeys);
+      var bucketKey = redisBucketsKey(lastRange);
+
+      redis.multi()
+        .lrange(bucketKey, 0, -1)
+        .del(bucketKey)
+        .exec(function(err, result) {
+          var buckets = result[0][1];
+          var deletedKeys = result[1][1];
+
+          debug('DEL %s %s', bucketKey, deletedKeys ? 'success' : 'fail');
+
           if (deletedKeys > 0) {
             var bucket = utils.mergeBuckets(buckets.map(JSON.parse));
 
-            if (!_.isEmpty(bucket))
+            if (!_.isEmpty(bucket.instances))
               uploadToCloud(bucket);
           }
         });
-      });
     }, 10000);
     setTimeout(uploadWithRedis.bind(null, currentRange()), nextRange() - Date.now());
   };
 
+  var timeout = nextRange() - Date.now();
+
   if (redis) {
-    setTimeout(uploadWithRedis.bind(null, currentRange()), nextRange() - Date.now());
+    debug('use redis, next commit after %ss', timeout / 1000);
+    setTimeout(uploadWithRedis.bind(null, currentRange()), timeout);
   } else {
-    setTimeout(uploadWithoutRedis, nextRange() - Date.now());
+    debug('no redis, next upload after %ss', timeout / 1000);
+    setTimeout(uploadWithoutRedis, timeout);
   }
 }
 

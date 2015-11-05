@@ -1,6 +1,14 @@
 var utils = require('./public/utils');
 
-module.exports = function() {
+module.exports = function(instanceName) {
+  var newInstance = function() {
+    return {
+      instance: instanceName,
+      routers: [],
+      cloudApi: [],
+    };
+  };
+
   var instanceBucket = newInstance();
   var realtimeBucket = newInstance();
 
@@ -42,10 +50,3 @@ module.exports = function() {
     }
   };
 };
-
-function newInstance() {
-  return {
-    routers: [],
-    cloudApi: [],
-  };
-}

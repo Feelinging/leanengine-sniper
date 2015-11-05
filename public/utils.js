@@ -2,16 +2,20 @@
   utils.responseTypes = ['success', 'clientError', 'serverError'];
 
   utils.mergeBuckets = function(buckets) {
-    result = {};
+    var result = {
+      instances: []
+    };
 
     buckets.forEach(function(bucket) {
-      _.each(bucket, function(bucket, instanceName) {
-        if (utils.isEmptyInstance(bucket))
-          return;
-        else if (result[instanceName])
-          utils.mergeInstance(result[instanceName], bucket);
-        else
-          result[instanceName] = bucket;
+      bucket.instances.forEach(function(instanceBucket) {
+        if (!utils.isEmptyInstance(instanceBucket)) {
+          var targetInstance = _.findWhere(result.instances, {instance: instanceBucket.instance});
+
+          if (targetInstance)
+            utils.mergeInstance(targetInstance, instanceBucket);
+          else
+            result.instances.push(instanceBucket);
+        }
       });
     });
 
@@ -72,7 +76,7 @@
   };
 
 }).apply(this, (function() {
-  if (exports === 'undefined')
+  if (typeof exports === 'undefined')
     return [window.utils = {}, _];
   else
     return [exports, require('underscore')];
