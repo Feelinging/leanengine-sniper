@@ -25,7 +25,7 @@ module.exports = function(AV, redis) {
 
   router.get('/__lcSniper/lastDayStatistics.json', authenticate, function (req, res) {
     var query = new AV.Query(Storage);
-    query.greaterThan('createdAt', new Date(Date.now() - 24 * 3600 * 1000)).find().then(function(data) {
+    query.greaterThan('createdAt', new Date(Date.now() - 24 * 3600 * 1000)).limit(1000).find().then(function(data) {
       res.json(data);
     });
   });

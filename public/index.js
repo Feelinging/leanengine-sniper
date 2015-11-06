@@ -5,7 +5,9 @@ var responseTypes = utils.responseTypes;
 var requestsCountByType = utils.requestCount;
 
 var pieChartItemLimit = 15;
+var columnChartItemLimit = 10;
 var lineChartItemLimit = 8;
+var areaChartItemLimit = 5;
 
 var initialData = {
   allRouters: {},
@@ -69,10 +71,8 @@ function displayCharts() {
   var byInstance = displayOptions.byInstance;
   var byStatusCode = displayOptions.byStatusCode;
 
-  var clonedInitialData = _.cloneDeep(initialData);
-
-  var unmeragedRouterData = filterByInstance(clonedInitialData.routers, byInstance);
-  var unmeragedCloudData = filterByInstance(clonedInitialData.cloudApi, byInstance);
+  var unmeragedRouterData = filterByInstance(_.cloneDeep(initialData.routers), byInstance);
+  var unmeragedCloudData = filterByInstance(_.cloneDeep(initialData.cloudApi), byInstance);
 
   unmeragedRouterData = filterByRouter(unmeragedRouterData, byRouter);
   unmeragedRouterData = filterByStatusCode(unmeragedRouterData, byStatusCode);
@@ -80,8 +80,9 @@ function displayCharts() {
   var routerData = mergeInstances(_.cloneDeep(unmeragedRouterData));
   var cloudData = mergeInstances(_.cloneDeep(unmeragedCloudData));
 
-  buildCacheOnRouterData(unmeragedRouterData);
-  buildCacheOnRouterData(routerData);
+  buildCacheOnLogs(unmeragedRouterData);
+  buildCacheOnLogs(routerData);
+  buildCacheOnLogs(cloudData);
 
   $('#routerSuccessAndError').highcharts({
     title: {
@@ -97,15 +98,10 @@ function displayCharts() {
     },
     series: fillZeroForSeries((function() {
       if (byInstance == '*') {
-        return counterToSortedArray(initialData.allInstances).slice(0, lineChartItemLimit).map(function(instanceInfo) {
+        return forEachInstance(unmeragedRouterData, lineChartItemLimit, function(log) {
           return {
-            name: instanceInfo.name,
-            data: _.where(unmeragedRouterData, {instance: instanceInfo.name}).map(function(log) {
-              return {
-                x: log.createdAt.getTime(),
-                y: requestsCountByType(log)
-              };
-            })
+            x: log.createdAt.getTime(),
+            y: requestsCountByType(log)
           };
         });
       } else if (byStatusCode == '*') {
@@ -160,8 +156,6 @@ function displayCharts() {
     })())
   });
 
-  return;
-
   $('#routerResponseTime').highcharts({
     chart: {
       type: 'area'
@@ -174,17 +168,157 @@ function displayCharts() {
     },
     yAxis: {
       title: {
-        text: '时间（毫秒）'
+        text: '毫秒'
+      }
+    },
+    series: fillZeroForSeries((function() {
+      if (byInstance == '*') {
+        return forEachInstance(unmeragedRouterData, lineChartItemLimit, function(log) {
+          return {
+            x: log.createdAt.getTime(),
+            y: log.responseTime || null
+          };
+        });
+      } else if (byRouter == "*") {
+        return counterToSortedArray(initialData.allRouters).slice(0, lineChartItemLimit).map(function(routerInfo) {
+          return {
+            name: routerInfo.name,
+            data: routerData.map(function(log) {
+              var urlLog = _.findWhere(log.urls, {url: routerInfo.name});
+
+              return {
+                x: log.createdAt.getTime(),
+                y: urlLog ? urlLog.responseTime : null
+              };
+            })
+          };
+        });
+      } else {
+        return [{
+          name: 'Average',
+          data: routerData.map(function(log) {
+            return {
+              x: log.createdAt.getTime(),
+              y: log.responseTime || null
+            };
+          })
+        }];
+      }
+    })())
+  });
+
+  $('#instanceSuccessAndError').highcharts({
+    chart: {
+      type: 'column'
+    },
+    title: {
+      text: '实例请求量'
+    },
+    xAxis: {
+      type: 'category',
+      labels: {
+        rotation: -45
+      }
+    },
+    yAxis: {
+      title: {
+        text: '次数'
+      }
+    },
+    series: (function() {
+      var instanceNames = _.map(counterToSortedArray(initialData.allInstances).slice(0, columnChartItemLimit), 'name');
+      var series = {};
+
+      var push = function(name, value) {
+        if (series[name])
+          series[name].push(value);
+        else
+          series[name] = [value];
+      };
+
+      if (byStatusCode == '*') {
+        instanceNames.forEach(function(instance) {
+          var logs = _.where(unmeragedRouterData, {instance: instance});
+          var serie = {};
+
+          logs.forEach(function (log) {
+            log.urls.forEach(function(url) {
+              _.map(url, function(count, statusCode) {
+                if (isFinite(parseInt(statusCode)))
+                  incrCounter(serie, statusCode, count);
+              });
+            });
+          });
+
+          _.map(serie, function(value, statusCode) {
+            push(statusCode, {
+              name: instance,
+              y: value
+            });
+          });
+        });
+      } else {
+        instanceNames.forEach(function(instance) {
+          var logs = _.where(unmeragedRouterData, {instance: instance});
+
+          if (byStatusCode) {
+            push(byStatusCode, {
+              name: instance,
+              y: _.sum(logs, byStatusCode)
+            });
+          } else {
+            responseTypes.forEach(function(type) {
+              push(type, {
+                name: instance,
+                y: _.sum(logs, type)
+              });
+            });
+          }
+        });
+      }
+
+      return _.map(series, function(values, key) {
+        return {
+          name: key,
+          data: values
+        };
+      });
+    })()
+  });
+
+  $('#instanceResponseTime').highcharts({
+    chart: {
+      type: 'column'
+    },
+    title: {
+      text: '实例平均响应时间'
+    },
+    xAxis: {
+      type: 'category',
+      labels: {
+        rotation: -45
+      }
+    },
+    yAxis: {
+      title: {
+        text: '毫秒'
       }
     },
     series: [{
-      name: 'responseTime',
-      data: routerData.map(function(log) {
+      name: 'Average',
+      data: _.sortByOrder(counterToSortedArray(initialData.allInstances).slice(0, columnChartItemLimit).map(function(instanceInfo) {
+        var logs = _.where(unmeragedRouterData, {instance: instanceInfo.name});
+
+        var totalRequests = _.sum(logs.map(requestsCountByType));
+        var totalResponseTime = _.sum(logs.map(function(log) {
+          return log.responseTime * requestsCountByType(log);
+        }));
+
         return {
-          x: log.createdAt.getTime(),
-          y: log.responseTime
+          name: instanceInfo.name,
+          y: totalResponseTime / totalRequests
         };
-      })
+      }), 'y', 'desc')
     }]
   });
 
@@ -197,15 +331,10 @@ function displayCharts() {
     },
     series: [{
       name: 'Routers',
-      data: _(routerData).pluck('urls').flatten().groupBy('urlPattern').map(function(urls, urlPattern) {
+      data: _(routerData).map('urls').flatten().groupBy('url').map(function(urls, url) {
         return {
-          name: urlPattern,
-          y: (function() {
-            if (displayOptions.byStatusCode)
-              return _.sum(urls, displayOptions.byStatusCode);
-            else
-              return _.sum(urls, requestCount);
-          })()
+          name: url,
+          y: _.sum(urls, requestsCountByStatus)
         };
       }).filter(function(item) {
         return item.y > 0;
@@ -221,25 +350,26 @@ function displayCharts() {
       text: '路由响应代码分布'
     },
     series: [{
-      name: 'StatusCode',
-      data: _(_(routerData).pluck('urls').flatten().reduce(function(grouped, url) {
-        _.each(url, function(value, key) {
-          if (isFinite(parseInt(key)) && (!displayOptions.byStatusCode || displayOptions.byStatusCode == key)) {
-            if (grouped[key])
-              grouped[key] += value;
-            else
-              grouped[key] = value;
-          }
+      name: 'statusCode',
+      data: (function() {
+        var statusCodes = {};
+
+        _(routerData).map('urls').flatten().value().forEach(function(url) {
+          _.each(url, function(value, key) {
+            if (isFinite(parseInt(key)))
+              incrCounter(statusCodes, key, value);
+          });
         });
-        return grouped;
-      }, {})).map(function(value, key) {
-        return {
-          name: key,
-          y: value
-        };
-      }).filter(function(item) {
-        return item.y > 0;
-      }).value()
+
+        return _(statusCodes).map(function(value, key) {
+          return {
+            name: key,
+            y: value
+          };
+        }).filter(function(item) {
+          return item.y > 0;
+        }).value();
+      })()
     }]
   });
 
@@ -280,15 +410,15 @@ function displayCharts() {
     },
     yAxis: {
       title: {
-        text: '时间（毫秒）'
+        text: '毫秒'
       }
     },
     series: [{
-      name: 'responseTime',
+      name: 'Average',
       data: cloudData.map(function(log) {
         return {
           x: log.createdAt.getTime(),
-          y: log.responseTime
+          y: log.responseTime || null
         };
       })
     }]
@@ -302,41 +432,15 @@ function displayCharts() {
       text: '云调用分布'
     },
     series: [{
-      name: 'Cloud',
-      data: _(cloudData).pluck('urls').flatten().groupBy('urlPattern').map(function(urls, urlPattern) {
+      name: 'url',
+      data: _(cloudData).map('urls').flatten().groupBy('url').map(function(urls, url) {
         return {
-          name: urlPattern,
-          y: _.sum(urls, requestCount)
+          name: url,
+          y: _.sum(urls, requestsCountByType)
         };
       }).filter(function(item) {
         return item.y > 0;
       }).sortBy('y').slice(-pieChartItemLimit).value()
-    }]
-  });
-
-  $('#cloudStatusPie').highcharts({
-    chart: {
-      type: 'pie'
-    },
-    title: {
-      text: '云调用响应分布'
-    },
-    series: [{
-      name: 'CloudStatus',
-      data: _(_(cloudData).pluck('urls').flatten().reduce(function(grouped, url) {
-        responseTypes.forEach(function(type) {
-          if (grouped[type])
-            grouped[type] += url[type];
-          else
-            grouped[type] = url[type] || 0;
-        });
-        return grouped;
-      }, {})).map(function(value, key) {
-        return {
-          name: key,
-          y: value
-        };
-      }).value()
     }]
   });
 }
@@ -543,8 +647,8 @@ function fillZeroForSeries(series) {
   return series;
 }
 
-function buildCacheOnRouterData(routerData) {
-  routerData.forEach(function (log) {
+function buildCacheOnLogs(logs) {
+  logs.forEach(function (log) {
     var logRequests = 0;
     var logTotalResponseTime = 0;
 
@@ -556,23 +660,35 @@ function buildCacheOnRouterData(routerData) {
       var urlRequests = 0;
 
       responseTypes.forEach(function(type) {
-        url[type] = 0;
+        url[type] = url[type] || 0;
       });
 
-      _.map(url, function(count, statusCode) {
-        if (isFinite(parseInt(statusCode))) {
-          var responseType = utils.typeOfStatusCode(parseInt(statusCode));
+      _.map(url, function(count, key) {
+        if (isFinite(parseInt(key))) {
+          var responseType = utils.typeOfStatusCode(parseInt(key));
           url[responseType] += count;
           log[responseType] += count;
           urlRequests += count;
-          logRequests += count;
+        } else if (_.includes(responseTypes, key)) {
+          log[key] += count;
+          urlRequests += count;
         }
       });
 
       url.responseTime = url.totalResponseTime / urlRequests;
       logTotalResponseTime += url.totalResponseTime;
+      logRequests += urlRequests;
     });
 
     log.responseTime = logTotalResponseTime / logRequests;
+  });
+}
+
+function forEachInstance(logs, limit, callback) {
+  return counterToSortedArray(initialData.allInstances).slice(0, limit).map(function(instanceInfo) {
+    return {
+      name: instanceInfo.name,
+      data: _.where(logs, {instance: instanceInfo.name}).map(callback)
+    };
   });
 }
