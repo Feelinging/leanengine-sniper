@@ -24,9 +24,13 @@
 
   utils.mergeInstance = function(target, source) {
     ['routers', 'cloudApi'].forEach(function (field) {
-      source[field].forEach(function(url) {
-        utils.mergeUrlToUrls(target[field], url);
-      });
+      utils.mergeUrlstoUrls(target[field], source[field]);
+    });
+  };
+
+  utils.mergeUrlstoUrls = function(target, source) {
+    source.forEach(function(url) {
+      utils.mergeUrlToUrls(target, url);
     });
   };
 
@@ -44,7 +48,7 @@
     targetUrl.totalResponseTime += sourceUrl.totalResponseTime || 0;
 
     _.each(sourceUrl, function(value, key) {
-      if (isFinite(parseInt(key)) || _.contains(utils.responseTypes, key)) {
+      if (isFinite(parseInt(key)) || _.includes(utils.responseTypes, key)) {
         if (targetUrl[key])
           targetUrl[key] += value;
         else

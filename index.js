@@ -12,9 +12,9 @@ var _ = require('underscore');
 var createCollector = require('./collector');
 var utils = require('./public/utils');
 
-var sample = { // bucket, log
+var storageObjectSample = { // bucket, log
   instances: [{ // instance, instanceBucket
-    instance: 'instanceA',
+    instance: 'localhost',
     routers: [ // urls
       {url: 'urlA', totalResponseTime: 650, '200': 3}, // url, urlLog
       // ...
@@ -107,7 +107,7 @@ module.exports = exports = function(options) {
     next();
   };
 
-  return sniper;
+  return [sniper, require('./server')(AV, redis)];
 };
 
 function injectCloudRequest(AV, collector) {
