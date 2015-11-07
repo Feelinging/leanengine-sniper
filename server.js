@@ -2,12 +2,10 @@
 
 var basicAuth = require('basic-auth');
 var express = require('express');
+var http = require('http');
 
-module.exports = function(options) {
-  var routerCollector = options.routerCollector;
-  var cloudCollector = options.cloudCollector;
-  var AV = options.AV;
-
+module.exports = function(AV, redis) {
+  var Storage = AV.Object.extend('LeanEngineSniper');
   var router = new express.Router();
 
   var authenticate = function(req, res, next) {
@@ -25,18 +23,10 @@ module.exports = function(options) {
 
   router.use('/__lcSniper', authenticate, express.static(__dirname + '/public'));
 
-  router.get('/__lcSniper/recentStatistics', authenticate, function(req, res) {
-    res.send(routerCollector.recentStatistics());
-  });
-
   router.get('/__lcSniper/lastDayStatistics.json', authenticate, function (req, res) {
-    routerCollector.getLastDayStatistics().then(function(routerData) {
-      cloudCollector.getLastDayStatistics().then(function(cloudData) {
-        res.json({
-          routerData: routerData,
-          cloudData: cloudData
-        });
-      });
+    var query = new AV.Query(Storage);
+    query.greaterThan('createdAt', new Date(Date.now() - 24 * 3600 * 1000)).limit(1000).find().then(function(data) {
+      res.json(data);
     });
   });
 
