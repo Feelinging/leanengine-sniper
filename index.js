@@ -107,7 +107,7 @@ module.exports = exports = function(options) {
     next();
   };
 
-  return [sniper, require('./server')(AV, redis)];
+  return [sniper, require('./server')(AV, options.redis)];
 };
 
 function injectCloudRequest(AV, collector) {
