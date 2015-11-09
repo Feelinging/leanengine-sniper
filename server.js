@@ -4,9 +4,10 @@ var basicAuth = require('basic-auth');
 var express = require('express');
 var Redis = require('ioredis');
 var http = require('http');
+var _ = require('underscore');
 
-module.exports = function(AV, redisOptions) {
-  var Storage = AV.Object.extend('LeanEngineSniper');
+module.exports = function(AV, options) {
+  var Storage = AV.Object.extend(options.className);
   var router = new express.Router();
 
   var authenticate = function(req, res, next) {
@@ -33,15 +34,14 @@ module.exports = function(AV, redisOptions) {
 
   router.get('/__lcSniper/realtime.json', authenticate, function(req, res) {
     try {
-      var subscriber = new Redis(redisOptions);
-      var messageId = 0;
+      var subscriber = new Redis(options.redis);
 
       subscriber.subscribe('__lcSniper:realtime', function(err) {
         if (err) console.log(err);
       });
 
       subscriber.on('message', function(channel, message) {
-        res.write('id: ' + ++messageId + '\n');
+        res.write('id: ' + _.uniqueId() + '\n');
         res.write('data: ' + message + '\n\n');
       });
 
