@@ -254,11 +254,14 @@ function buildCacheOnLogs(logs) {
         }
       });
 
-      url.responseTime = url.totalResponseTime / urlRequests;
+      if (urlRequests)
+        url.responseTime = url.totalResponseTime / urlRequests;
+
       logTotalResponseTime += url.totalResponseTime;
       logRequests += urlRequests;
     });
 
-    log.responseTime = logTotalResponseTime / logRequests;
+    if (logRequests)
+      log.responseTime = logTotalResponseTime / logRequests;
   });
 }

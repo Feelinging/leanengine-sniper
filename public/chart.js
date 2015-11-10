@@ -110,6 +110,12 @@ function displayCharts() {
         text: '毫秒'
       }
     },
+    plotOptions: {
+      series: {
+        connectNulls: true,
+        connectEnds: true
+      }
+    },
     series: (function() {
       if (byInstance == '*') {
         return forEachInstance(unmeragedRouterData, lineChartItemLimit, function(log) {
@@ -203,7 +209,7 @@ function displayCharts() {
           if (byStatusCode) {
             push(byStatusCode, {
               name: instance,
-              y: _.sum(logs, byStatusCode)
+              y: _.sum(logs, requestsCountByType)
             });
           } else {
             responseTypes.forEach(function(type) {
@@ -257,6 +263,8 @@ function displayCharts() {
           name: instanceInfo.name,
           y: totalResponseTime / totalRequests
         };
+      }).filter(function (item) {
+        return isFinite(item.y);
       }), 'y', 'desc')
     }]
   });
@@ -350,6 +358,12 @@ function displayCharts() {
     yAxis: {
       title: {
         text: '毫秒'
+      }
+    },
+    plotOptions: {
+      series: {
+        connectNulls: true,
+        connectEnds: true
       }
     },
     series: [{
