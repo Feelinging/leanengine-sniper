@@ -9,14 +9,14 @@ function displayCharts() {
   var byInstance = displayOptions.byInstance;
   var byStatusCode = displayOptions.byStatusCode;
 
-  var unmeragedRouterData = filterByInstance(_.cloneDeep(initialData.routers), byInstance);
-  var unmeragedCloudData = filterByInstance(_.cloneDeep(initialData.cloudApi), byInstance);
+  var unmeragedRouterData = filterByInstance(initialData.routers, byInstance);
+  var unmeragedCloudData = filterByInstance(initialData.cloudApi, byInstance);
 
   unmeragedRouterData = filterByRouter(unmeragedRouterData, byRouter);
   unmeragedRouterData = filterByStatusCode(unmeragedRouterData, byStatusCode);
 
-  var routerData = mergeInstances(_.cloneDeep(unmeragedRouterData));
-  var cloudData = mergeInstances(_.cloneDeep(unmeragedCloudData));
+  var routerData = mergeInstances(unmeragedRouterData);
+  var cloudData = mergeInstances(unmeragedCloudData);
 
   buildCacheOnLogs(unmeragedRouterData);
   buildCacheOnLogs(routerData);
@@ -46,6 +46,7 @@ function displayCharts() {
         return counterToSortedArray(initialData.allStatusCodes).slice(0, lineChartItemLimit).map(function(sutatuCodeInfo) {
           return {
             name: sutatuCodeInfo.name,
+            animation: false,
             data: routerData.map(function(log) {
               return {
                 x: log.createdAt.getTime(),
@@ -58,6 +59,7 @@ function displayCharts() {
         return counterToSortedArray(initialData.allRouters).slice(0, lineChartItemLimit).map(function(routerInfo) {
           return {
             name: routerInfo.name,
+            animation: false,
             data: routerData.map(function(log) {
               var urlLog = _.findWhere(log.urls, {url: routerInfo.name});
 
@@ -71,6 +73,7 @@ function displayCharts() {
       } else if (byStatusCode) {
         return [{
           name: byStatusCode,
+          animation: false,
           data: routerData.map(function(log) {
             return {
               x: log.createdAt.getTime(),
@@ -128,6 +131,7 @@ function displayCharts() {
         return counterToSortedArray(initialData.allRouters).slice(0, lineChartItemLimit).map(function(routerInfo) {
           return {
             name: routerInfo.name,
+            animation: false,
             data: routerData.map(function(log) {
               var urlLog = _.findWhere(log.urls, {url: routerInfo.name});
 
@@ -141,6 +145,7 @@ function displayCharts() {
       } else {
         return [{
           name: 'Average',
+          animation: false,
           data: routerData.map(function(log) {
             return {
               x: log.createdAt.getTime(),
@@ -225,6 +230,7 @@ function displayCharts() {
       return _.map(series, function(values, key) {
         return {
           name: key,
+          animation: false,
           data: values
         };
       });
@@ -251,6 +257,7 @@ function displayCharts() {
     },
     series: [{
       name: 'Average',
+      animation: false,
       data: _.sortByOrder(counterToSortedArray(initialData.allInstances).slice(0, columnChartItemLimit).map(function(instanceInfo) {
         var logs = _.where(unmeragedRouterData, {instance: instanceInfo.name});
 
@@ -278,6 +285,7 @@ function displayCharts() {
     },
     series: [{
       name: 'Routers',
+      animation: false,
       data: _(routerData).map('urls').flatten().groupBy('url').map(function(urls, url) {
         return {
           name: url,
@@ -298,6 +306,7 @@ function displayCharts() {
     },
     series: [{
       name: 'statusCode',
+      animation: false,
       data: (function() {
         var statusCodes = {};
 
@@ -335,6 +344,7 @@ function displayCharts() {
     series: responseTypes.map(function(type) {
       return {
         name: type,
+        animation: false,
         data: cloudData.map(function(log) {
           return {
             x: log.createdAt.getTime(),
@@ -368,6 +378,7 @@ function displayCharts() {
     },
     series: [{
       name: 'Average',
+      animation: false,
       data: cloudData.map(function(log) {
         return {
           x: log.createdAt.getTime(),
@@ -386,6 +397,7 @@ function displayCharts() {
     },
     series: [{
       name: 'url',
+      animation: false,
       data: _(cloudData).map('urls').flatten().groupBy('url').map(function(urls, url) {
         return {
           name: url,
@@ -430,6 +442,7 @@ function forEachInstance(logs, limit, callback) {
   return counterToSortedArray(initialData.allInstances).slice(0, limit).map(function(instanceInfo) {
     return {
       name: instanceInfo.name,
+      animation: false,
       data: _.where(logs, {instance: instanceInfo.name}).map(callback)
     };
   });

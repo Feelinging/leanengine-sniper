@@ -41,28 +41,26 @@ var displayOptions = {
 useCloudData();
 
 function useCloudData() {
+  if (realtimeStream) {
+    realtimeStream.close();
+    realtimeStream = null;
+  }
+
   $.get('lastDayStatistics.json', function(data) {
+    resetInitalData();
+
     var flattenedLogs = flattenLogs(data, initialData);
 
     initialData.routers = initialData.routers.concat(flattenedLogs.routers);
     initialData.cloudApi = initialData.cloudApi.concat(flattenedLogs.cloudApi);
 
-    resetOptions();
     updateOptions();
     displayCharts();
   });
 }
 
 function useRealtimeData() {
-  initialData = {
-    allRouters: {},
-    allInstances: {},
-    allStatusCodes: {},
-    routers: [],
-    cloudApi: []
-  };
-
-  resetOptions();
+  resetInitalData();
   displayCharts();
 
   realtimeStream = new EventSource('realtime.json');
@@ -88,6 +86,18 @@ function useRealtimeData() {
   realtimeStream.addEventListener('error', function(err) {
     console.error(err);
   });
+}
+
+function resetInitalData() {
+  initialData = {
+    allRouters: {},
+    allInstances: {},
+    allStatusCodes: {},
+    routers: [],
+    cloudApi: []
+  };
+
+  resetOptions();
 }
 
 function filterByRouter(logs, byRouter) {
