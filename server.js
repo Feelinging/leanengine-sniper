@@ -6,6 +6,8 @@ var Redis = require('ioredis');
 var http = require('http');
 var _ = require('underscore');
 
+var utils = require('./public/utils');
+
 module.exports = function(AV, options) {
   var Storage = AV.Object.extend(options.className);
   var router = new express.Router();
@@ -33,22 +35,39 @@ module.exports = function(AV, options) {
   });
 
   router.get('/__lcSniper/realtime.json', authenticate, function(req, res) {
+    if (!options.redis) {
+      return res.send('Need Redis, see the README.md of leanengine-sniper');
+    }
+
     try {
       var subscriber = new Redis(options.redis);
+      var pushQueue = [];
+
+      var intervalId = setInterval(function() {
+        var log = utils.mergeBuckets(pushQueue.map(function(instanceBucket) {
+          return {instances: [instanceBucket]};
+        }), true);
+
+        log.createdAt = new Date();
+        pushQueue = [];
+
+        res.write('id: ' + _.uniqueId() + '\n');
+        res.write('data: ' + JSON.stringify(log) + '\n\n');
+      }, options.realtimeCycle);
 
       subscriber.subscribe('__lcSniper:realtime', function(err) {
         if (err) console.log(err);
       });
 
       subscriber.on('message', function(channel, message) {
-        res.write('id: ' + _.uniqueId() + '\n');
-        res.write('data: ' + message + '\n\n');
+        pushQueue.push(JSON.parse(message));
       });
 
       req.socket.setTimeout(3600000);
 
       req.on('close', function() {
         subscriber.quit();
+        clearInterval(intervalId);
       });
 
       res.writeHead(200, {

@@ -8,6 +8,7 @@ var pieChartItemLimit = 15;
 var columnChartItemLimit = 10;
 var lineChartItemLimit = 8;
 var areaChartItemLimit = 5;
+var realtimeRangeLimit = 600 * 1000;
 
 var realtimeStream;
 
@@ -66,18 +67,16 @@ function useRealtimeData() {
   realtimeStream = new EventSource('realtime.json');
 
   realtimeStream.addEventListener('message', function(event) {
-    var instanceBucket = JSON.parse(event.data);
+    var log = JSON.parse(event.data);
 
-    if (_.isEmpty(instanceBucket.routers) && _.isEmpty(instanceBucket.cloudApi))
-      return;
+    var flattenedLogs = flattenLogs([log], initialData);
 
-    var flattenedLogs = flattenLogs([{
-      instances: [instanceBucket],
-      createdAt: new Date()
-    }], initialData);
+    var filterLogs = function(log) {
+      return log.createdAt.getTime() + realtimeRangeLimit > Date.now();
+    };
 
-    initialData.routers = initialData.routers.concat(flattenedLogs.routers);
-    initialData.cloudApi = initialData.cloudApi.concat(flattenedLogs.cloudApi);
+    initialData.routers = initialData.routers.filter(filterLogs).concat(flattenedLogs.routers);
+    initialData.cloudApi = initialData.cloudApi.filter(filterLogs).concat(flattenedLogs.cloudApi);
 
     updateOptions();
     displayCharts();
