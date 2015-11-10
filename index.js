@@ -55,7 +55,7 @@ module.exports = exports = function(options) {
     });
   }
 
-  var collector = createCollector(process.pid + '@' + os.hostname());
+  var collector = options.collector || createCollector(process.pid + '@' + os.hostname());
 
   if (options.redis) {
     redis = new Redis(options.redis);
