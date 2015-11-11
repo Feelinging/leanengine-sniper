@@ -9,11 +9,8 @@ function displayCharts() {
   var byInstance = displayOptions.byInstance;
   var byStatusCode = displayOptions.byStatusCode;
 
-  var unmeragedRouterData = filterByInstance(initialData.routers, byInstance);
-  var unmeragedCloudData = filterByInstance(initialData.cloudApi, byInstance);
-
-  unmeragedRouterData = filterByRouter(unmeragedRouterData, byRouter);
-  unmeragedRouterData = filterByStatusCode(unmeragedRouterData, byStatusCode);
+  var unmeragedRouterData = filterLogs(initialData.routers, displayOptions);
+  var unmeragedCloudData = filterLogs(initialData.cloudApi, displayOptions);
 
   var routerData = mergeInstances(unmeragedRouterData);
   var cloudData = mergeInstances(unmeragedCloudData);

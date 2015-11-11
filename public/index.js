@@ -99,50 +99,38 @@ function resetInitalData() {
   resetOptions();
 }
 
-function filterByRouter(logs, byRouter) {
-  if (_.includes(['', null, '*'], byRouter))
-    return logs;
+function filterLogs(logs, filterOptions) {
+  var byRouter = filterOptions.byRouter == '*' ? null : filterOptions.byRouter;
+  var byInstance = filterOptions.byInstance == '*' ? null : filterOptions.byInstance;
+  var byStatusCode = filterOptions.byStatusCode == '*' ? null : filterOptions.byStatusCode;
 
   return _.compact(logs.map(function(log) {
-    var url = _.findWhere(log.urls, {url: byRouter});
+    if (byInstance && log.instance != byInstance)
+      return null;
 
-    return _.extend(log, {
-      urls: url ? [url] : []
-    });
-  }));
-}
+    if (byRouter) {
+      var url = _.findWhere(log.urls, {url: byRouter});
 
-function filterByInstance(logs, byInstance) {
-  if (_.includes(['', null, '*'], byInstance))
-    return logs;
-
-  return logs.map(function(log) {
-    if (log.instance == byInstance) {
-      return log;
-    } else {
-      return _.extend(log, {
-        urls: []
+      log = _.extend({}, log, {
+        urls: url ? [url] : []
       });
     }
-  });
-}
 
-function filterByStatusCode(logs, byStatusCode) {
-  if (_.includes(['', null, '*'], byStatusCode))
-    return logs;
+    if (byStatusCode) {
+      log = _.extend({}, log, {
+        urls: log.urls.map(function(url) {
+          return _.pick(url, function(value, key) {
+            if (isFinite(parseInt(key)) && key != byStatusCode)
+              return false;
+            else
+              return true;
+          });
+        })
+      });
+    }
 
-  return logs.map(function(log) {
-    return _.extend(log, {
-      urls: log.urls.map(function(url) {
-        return _.pick(url, function(value, key) {
-          if (isFinite(parseInt(key)) && key != byStatusCode)
-            return false;
-          else
-            return true;
-        });
-      })
-    });
-  });
+    return _.cloneDeep(log);
+  }));
 }
 
 function mergeInstances(logs) {
@@ -160,7 +148,7 @@ function mergeInstances(logs) {
       else
         lastLog.mergedInstance = [log.instance];
     } else {
-      result.push(log);
+      result.push(_.cloneDeep(log));
     }
   });
 
