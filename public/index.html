@@ -4,18 +4,21 @@
     <title>LeanEngine Sniper</title>
   </head>
   <body>
-    <select id='routerSelect'>
+    <select id="routerSelect">
       <option></option>
       <option>*</option>
     </select>
-    <select id='instanceSelect'>
+    <select id="instanceSelect">
       <option></option>
       <option>*</option>
     </select>
-    <select id='statusCodeSelect'>
+    <select id="statusCodeSelect">
       <option></option>
       <option>*</option>
     </select>
+    <input id="logsFrom" value="-1d" style="width: 170px;" />
+    <input id="logsTo" value="now" style="width: 170px;" />
+    <button id="filterByRange" type="button">时间段筛选</button>
     <span style="float: right;">
       <input type="checkbox" id="useRealtimeData">
       <label for="useRealtimeData">追踪实时数据</label>

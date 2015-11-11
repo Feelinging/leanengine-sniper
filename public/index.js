@@ -31,12 +31,14 @@ var initialData = {
 };
 
 var displayOptions = {
-  // 路由筛选，由 filterByRouter 实现
   byRouter: null,
-  // 路由状态码筛选，在 displayCharts 中实现
   byStatusCode: null,
-  // 应用实例筛选，由 filterByInstance 实现
-  byInstance: null
+  byInstance: null,
+
+  logsFrom: utils.parseTimeString('-1d'),
+  logsTo: utils.parseTimeString('now'),
+
+  currentLogsFromToField: '#logsFrom'
 };
 
 useCloudData();
@@ -47,13 +49,16 @@ function useCloudData() {
     realtimeStream = null;
   }
 
-  $.get('lastDayStatistics.json', function(data) {
+  $.get('logs.json', {
+    logsFrom: displayOptions.logsFrom.toJSON(),
+    logsTo: displayOptions.logsTo.toJSON()
+  }, function(data) {
     resetInitalData();
 
     var flattenedLogs = flattenLogs(data, initialData);
 
-    initialData.routers = initialData.routers.concat(flattenedLogs.routers);
-    initialData.cloudApi = initialData.cloudApi.concat(flattenedLogs.cloudApi);
+    initialData.routers = flattenedLogs.routers;
+    initialData.cloudApi = flattenedLogs.cloudApi;
 
     updateOptions();
     displayCharts();
@@ -196,6 +201,20 @@ function flattenLogs(logs, counters) {
     routers: routerData,
     cloudApi: cloudApiData
   };
+}
+
+function buildCounters(routerLogs, counters) {
+  routerLogs.forEach(function(log) {
+    log.urls.forEach(function(url) {
+      _.each(url, function(count, statusCode) {
+        if (isFinite(parseInt(statusCode))) {
+          incrCounter(counters.allStatusCodes, statusCode, count);
+          incrCounter(counters.allInstances, log.instance, count);
+          incrCounter(counters.allRouters, url.url, count);
+        }
+      });
+    });
+  });
 }
 
 function incrCounter(counter, field, count) {

@@ -11,14 +11,63 @@ $(function() {
     setDisplayOptions('byInstance', $('#instanceSelect').val());
   });
 
-  $('#useRealtimeData').change(function() {
-    if ($('#useRealtimeData').is(':checked')) {
-      useRealtimeData();
+  $('#logsFrom, #logsTo').keypress(function(event) {
+    if(event.which == 13)
+      $('#filterByRange').click();
+  });
+
+  $('#filterByRange').click(function() {
+    if (realtimeStream)
+      return;
+
+    displayOptions.logsFrom = utils.parseTimeString($('#logsFrom').val());
+    displayOptions.logsTo = utils.parseTimeString($('#logsTo').val());
+
+    if (_.isEmpty(initialData.routers))
+      return useCloudData();
+
+    var currentFrom = new Date(_.first(initialData.routers).createdAt.getTime() - 300000);
+    var currentTo = new Date(_.last(initialData.routers).createdAt.getTime() + 300000);
+
+    // 如果新的筛选范围小于当前范围（接受最多五分钟的误差），则在客户端筛选数据，不发起请求
+    if (displayOptions.logsFrom >= currentFrom && (displayOptions.logsTo <= currentTo || $('#logsTo').val() == 'now')) {
+      var filterLogs = function(log) {
+        return log.createdAt > displayOptions.logsFrom && log.createdAt < displayOptions.logsTo;
+      };
+
+      _.extend(initialData, {
+        routers: initialData.routers.filter(filterLogs),
+        cloudApi: initialData.cloudApi.filter(filterLogs),
+        allRouters: {},
+        allInstances: {},
+        allStatusCodes: {}
+      })
+
+      buildCounters(initialData.routers, initialData);
+
+      resetOptions();
+      updateOptions();
+      displayCharts();
     } else {
       useCloudData();
     }
   });
+
+  $('#useRealtimeData').change(function() {
+    if ($('#useRealtimeData').is(':checked')) {
+      useRealtimeData();
+      $('#filterByRange').prop('disabled', true);
+    } else {
+      useCloudData();
+      $('#filterByRange').prop('disabled', false);
+    }
+  });
 });
+
+function fillLogsFromTo(time) {
+  $(displayOptions.currentLogsFromToField).val(new Date(time).toJSON());
+  displayOptions.currentLogsFromToField = displayOptions.currentLogsFromToField == '#logsFrom' ? '#logsTo' : '#logsFrom';
+}
 
 function setDisplayOptions(name, value) {
   var domMapping = {
@@ -45,6 +94,14 @@ function resetOptions() {
   $('#routerSelect option:gt(1)').remove();
   $('#instanceSelect option:gt(1)').remove();
   $('#statusCodeSelect option:gt(1)').remove();
+
+  $('#routerSelect').val('');
+  $('#instanceSelect').val('');
+  $('#statusCodeSelect').val('');
+
+  displayOptions.byRouter = null;
+  displayOptions.byInstance = null;
+  displayOptions.byStatusCode = null;
 }
 
 function updateOptions() {
