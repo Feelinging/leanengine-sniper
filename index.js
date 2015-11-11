@@ -31,17 +31,22 @@ var storageObjectSample = { // bucket, log
 /**
  * @param {AV} options.AV
  * @param {String} options.redis
+ * @param {String=} options.className
  * @param {Number=300000} options.commitCycle
+ * @param {Number=5000} options.realtimeCycle
  * @param {Boolean=true} options.ignoreStatics
  * @param {Object[]=} options.rules
  *          {match: /^GET \/(js|css).+/, ignore: true}
  *          {match: /^GET \/(js|css).+/, rewrite: 'GET /*.$1'}
  */
 module.exports = exports = function(options) {
+  options.className = options.className || 'LeanEngineSniper';
+  options.commitCycle = options.commitCycle || 300000;
+  options.realtimeCycle = options.realtimeCycle || 5000;
+
   var AV = options.AV;
   var redis;
   var rewriteRules = options.rules || [];
-  options.commitCycle = options.commitCycle || 300000;
 
   if (options.ignoreStatics !== false) {
     rewriteRules.unshift({
@@ -50,15 +55,15 @@ module.exports = exports = function(options) {
     });
   }
 
-  var collector = createCollector(process.pid + '@' + os.hostname());
+  var collector = options.collector || createCollector(process.pid + '@' + os.hostname());
 
   if (options.redis) {
     redis = new Redis(options.redis);
-    startRealtime(redis, collector);
+    startRealtime(redis, collector, options);
   }
 
-  injectCloudRequest(AV, collector);
-  startUploading(AV.Object.extend('LeanEngineSniper'), redis, collector, options);
+  injectCloudRequest(AV, collector, options);
+  startUploading(AV.Object.extend(options.className), redis, collector, options);
 
   var sniper = function(req, res, next) {
     req._lc_startedAt = new Date();
@@ -71,8 +76,8 @@ module.exports = exports = function(options) {
       if (err)
         return console.error(err);
 
-        if (req.originalUrl.match(/__lcSniper/))
-          return;
+      if (req.originalUrl.match(/__lcSniper/))
+        return;
 
       var requestUrl = req.originalUrl.replace(/\?.*/, '');
       var responseTime = (res._lc_startedAt ? res._lc_startedAt.getTime() : Date.now()) - req._lc_startedAt.getTime();
@@ -107,10 +112,10 @@ module.exports = exports = function(options) {
     next();
   };
 
-  return [sniper, require('./server')(AV, redis)];
+  return [sniper, require('./server')(AV, options)];
 };
 
-function injectCloudRequest(AV, collector) {
+function injectCloudRequest(AV, collector, options) {
   var originalRequest = AV._request;
 
   var generateUrl = function(route, className, objectId, method) {
@@ -145,7 +150,7 @@ function injectCloudRequest(AV, collector) {
     };
 
     promise.then(function(result, statusCode) {
-      if (cloudUrl.match(/classes\/LeanEngineSniper/))
+      if (className == options.className)
         return;
 
       debug('cloudApi: %s %s', cloudUrl, statusCode);
@@ -242,12 +247,12 @@ function startUploading(Storage, redis, collector, options) {
   }
 }
 
-function startRealtime(redis, collector) {
+function startRealtime(redis, collector, options) {
   setInterval(function() {
     redis.publish('__lcSniper:realtime', JSON.stringify(collector.flushRealtime()), function(err) {
       if (err) console.error(err);
     });
-  }, 5000);
+  }, options.realtimeCycle);
 }
 
 function redisBucketsKey(time) {

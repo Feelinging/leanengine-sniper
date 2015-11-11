@@ -1,21 +1,20 @@
 (function(utils, _) {
   utils.responseTypes = ['success', 'clientError', 'serverError'];
 
-  utils.mergeBuckets = function(buckets) {
+  utils.mergeBuckets = function(buckets, includesEmptyInstance) {
     var result = {
       instances: []
     };
 
     buckets.forEach(function(bucket) {
       bucket.instances.forEach(function(instanceBucket) {
-        if (!utils.isEmptyInstance(instanceBucket)) {
-          var targetInstance = _.findWhere(result.instances, {instance: instanceBucket.instance});
+        var targetInstance = _.findWhere(result.instances, {instance: instanceBucket.instance});
 
-          if (targetInstance)
-            utils.mergeInstance(targetInstance, instanceBucket);
-          else
-            result.instances.push(instanceBucket);
-        }
+        if (targetInstance)
+          utils.mergeInstance(targetInstance, instanceBucket);
+        // 除非设置了 includesEmptyInstance, 才将空的 instanceBucket 包含在结果中
+        else if (!targetInstance && (!utils.isEmptyInstance(instanceBucket) || includesEmptyInstance))
+          result.instances.push(instanceBucket);
       });
     });
 
