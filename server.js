@@ -27,9 +27,21 @@ module.exports = function(AV, options) {
 
   router.use('/__lcSniper', authenticate, express.static(__dirname + '/public'));
 
-  router.get('/__lcSniper/lastDayStatistics.json', authenticate, function (req, res) {
+  router.get('/__lcSniper/logs.json', authenticate, function (req, res) {
     var query = new AV.Query(Storage);
-    query.greaterThan('createdAt', new Date(Date.now() - 24 * 3600 * 1000)).limit(1000).find().then(function(data) {
+
+    var from = new Date(req.query.logsFrom);
+    var to = new Date(req.query.logsTo);
+
+    if (isNaN(from.valueOf()))
+      from = new Date(Date.now() - 24 * 3600 * 1000);
+
+    query.greaterThan('createdAt', from);
+
+    if (!isNaN(to.valueOf()))
+      query.lessThan('createdAt', to);
+
+    query.limit(1000).find().then(function(data) {
       res.json(data);
     });
   });

@@ -31,6 +31,17 @@ function displayCharts() {
         text: '次数'
       }
     },
+    plotOptions: {
+      series: {
+        point: {
+          events: {
+            click: function() {
+              fillLogsFromTo(this.x);
+            }
+          }
+        }
+      }
+    },
     series: fillZeroForSeries((function() {
       if (byInstance == '*') {
         return forEachInstance(unmeragedRouterData, lineChartItemLimit, function(log) {
@@ -113,7 +124,14 @@ function displayCharts() {
     plotOptions: {
       series: {
         connectNulls: true,
-        connectEnds: true
+        connectEnds: true,
+        point: {
+          events: {
+            click: function() {
+              fillLogsFromTo(this.x);
+            }
+          }
+        }
       }
     },
     series: (function() {

@@ -78,6 +78,36 @@
     return result;
   };
 
+  utils.parseTimeString = function(timeString) {
+    if (!timeString || timeString == 'now') {
+      return new Date();
+    }
+
+    if (!_.isString(timeString)) {
+      return new Date(timeString);
+    }
+
+    var matched = timeString.match(/^(\+|-)((\d+)d)?((\d+)h)?((\d+)m)?/);
+
+    if (matched) {
+      var base = matched[1] == '+' ? 1 : -1;
+      var d = matched[3] ? parseInt(matched[3]) : 0;
+      var h = matched[5] ? parseInt(matched[5]) : 0;
+      var m = matched[7] ? parseInt(matched[7]) : 0;
+
+      h += d * 24;
+      m += h * 60;
+
+      var timestamp = Date.now() + base * m * 60000;
+
+      return new Date(timestamp);
+    } else if (timeString.match(/^\d{4,}$/)) {
+      return new Date(parseInt(timeString));
+    } else {
+      return new Date(timeString);
+    }
+  };
+
 }).apply(this, (function() {
   if (typeof exports === 'undefined')
     return [window.utils = {}, _];
