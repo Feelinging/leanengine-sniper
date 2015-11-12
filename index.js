@@ -220,6 +220,12 @@ function startUploading(Storage, redis, collector, options) {
         .lrange(bucketKey, 0, -1)
         .del(bucketKey)
         .exec(function(err, result) {
+          if (err)
+            return console.error(err);
+
+          if (!result[1]) // Redis 返回的结果里没有 DEL 命令的结果
+            return console.error('Cant del key from Redis');
+
           var buckets = result[0][1];
           var deletedKeys = result[1][1];
 
