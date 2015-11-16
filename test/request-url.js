@@ -80,6 +80,8 @@ describe('request-url', function () {
 
   testUrlPattern('GET', '/2.0/topic/reply/1', 'GET /2.0/topic/reply/:replyId');
   testUrlPattern('GET', '/2.0/topic/reply/2', 'GET /2.0/topic/reply/:replyId');
+
+  testUrlPattern('GET', '/2.0/posts/563e27fe60b259ca8e1cfb91', 'GET /2.0/posts/:objectId');
 });
 
 function testUrlPattern(method, url, urlPattern) {

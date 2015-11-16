@@ -53,6 +53,11 @@ module.exports = exports = function(options) {
       match: /^GET .*\.(css|js|jpe?g|gif|png|woff2?|ico)$/,
       rewrite: 'GET *.$1'
     });
+
+    rewriteRules.push({
+      match: /^(.*)[a-f0-9]{24}(.*)$/,
+      rewrite: '$1:objectId$2'
+    });
   }
 
   var collector = options.collector || createCollector(process.pid + '@' + os.hostname());
@@ -136,15 +141,6 @@ function injectCloudRequest(AV, collector, options) {
 
     var cloudUrl = generateUrl(route, className, objectId, method);
 
-    var responseType = function(err) {
-      if (!err)
-        return 'success';
-      else if (err.code > 0)
-        return 'clientError';
-      else
-        return 'serverError';
-    };
-
     var responseTime = function() {
       return Date.now() - startedAt.getTime();
     };
@@ -154,10 +150,10 @@ function injectCloudRequest(AV, collector, options) {
         return;
 
       debug('cloudApi: %s %s', cloudUrl, statusCode);
-      collector.logCloudApi(cloudUrl, responseType(), responseTime());
+      collector.logCloudApi(cloudUrl, statusCode, responseTime());
     }, function(err) {
       debug('cloudApi: %s Error %s', cloudUrl, err.code);
-      collector.logCloudApi(cloudUrl, responseType(err), responseTime());
+      collector.logCloudApi(cloudUrl, err.code, responseTime());
     });
 
     return promise;
