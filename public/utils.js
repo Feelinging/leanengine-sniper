@@ -39,7 +39,7 @@
     if (targetUrl) {
       utils.mergeUrl(targetUrl, url);
     } else {
-      urls.push(url);
+      urls.push(_.clone(url));
     }
   };
 
