@@ -37,13 +37,13 @@ module.exports = function(instanceName) {
       utils.mergeUrlToUrls(realtimeBucket.routers, url);
     },
 
-    logCloudApi: function(requestUrl, responseType, responseTime) {
+    logCloudApi: function(requestUrl, statusCode, responseTime) {
       var url = {
         url: requestUrl,
         totalResponseTime: responseTime
       };
 
-      url[responseType] = 1;
+      url[statusCode] = 1;
 
       utils.mergeUrlToUrls(instanceBucket.cloudApi, url);
       utils.mergeUrlToUrls(realtimeBucket.cloudApi, url);
