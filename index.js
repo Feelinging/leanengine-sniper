@@ -53,6 +53,11 @@ module.exports = exports = function(options) {
       match: /^GET .*\.(css|js|jpe?g|gif|png|woff2?|ico)$/,
       rewrite: 'GET *.$1'
     });
+
+    rewriteRules.push({
+      match: /^(.*)[a-f0-9]{24}(.*)$/,
+      rewrite: '$1:objectId$2'
+    });
   }
 
   var collector = options.collector || createCollector(process.pid + '@' + os.hostname());
