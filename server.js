@@ -41,7 +41,7 @@ module.exports = function(AV, options) {
     if (!isNaN(to.valueOf()))
       query.lessThan('createdAt', to);
 
-    query.limit(1000).find().then(function(data) {
+    query.descending('createdAt').limit(1000).find().then(function(data) {
       res.json(data);
     });
   });

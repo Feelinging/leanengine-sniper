@@ -55,7 +55,7 @@ function useCloudData() {
   }, function(data) {
     resetInitalData();
 
-    var flattenedLogs = flattenLogs(data, initialData);
+    var flattenedLogs = flattenLogs(data.reverse(), initialData);
 
     initialData.routers = flattenedLogs.routers;
     initialData.cloudApi = flattenedLogs.cloudApi;
